@@ -1,0 +1,10 @@
+{
+  "name": "SmartBattery",
+  "short_name": "SmartBattery",
+  "description": "Monitoreo remoto de batería automotriz",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#101820",
+  "theme_color": "#101820",
+  "icons": []
+}

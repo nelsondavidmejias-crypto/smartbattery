@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101820">
+<link rel="manifest" href="manifest.webmanifest">
+<title>SmartBattery</title>
+<style>
+:root{color-scheme:dark;--bg:#101820;--panel:#1d2a35;--muted:#aab8c5;--green:#65db8b;--yellow:#e9c64a;--red:#ff6464;--purple:#c084fc}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:16px system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:620px;margin:auto;padding:20px 16px 36px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 18px}
+h1{font-size:23px;margin:0;letter-spacing:1px}.sub{color:var(--muted);font-size:12px;margin-top:4px}
+.pill{border-radius:99px;padding:7px 11px;font-size:12px;background:#303d48;color:var(--muted)}
+.card{background:var(--panel);border-radius:17px;padding:17px;margin:12px 0}
+.kicker{font-size:11px;color:var(--muted);letter-spacing:1px}
+.volts{font-size:46px;font-weight:750;line-height:1.2;margin:8px 0}
+.state{font-weight:750;font-size:15px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{background:#263744;border-radius:13px;padding:13px}
+.metric small{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}
+.metric strong{font-size:17px}
+button,select,input{font:inherit}
+button{border:0;border-radius:12px;background:#dce8f2;color:#101820;font-weight:700;padding:12px 15px;cursor:pointer}
+input{width:100%;border:1px solid #52616e;background:#14212b;color:#fff;border-radius:10px;padding:11px}
+label{display:block;color:var(--muted);font-size:12px;margin:12px 0 6px}
+.row{display:flex;gap:9px;align-items:center}
+.row>*{flex:1}
+.leds{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+.led{background:#263744;border-radius:11px;padding:10px;font-size:13px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px}
+.history{display:flex;justify-content:space-between;border-bottom:1px solid #34434f;padding:10px 0;font-size:13px}
+.muted{color:var(--muted);font-size:12px;line-height:1.5}
+.status{margin-top:8px;color:var(--muted);font-size:12px;word-break:break-word}
+.warning{border:1px solid #856b32;background:#302a1c;color:#f4d98b;padding:12px;border-radius:12px;font-size:12px;line-height:1.5}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#e5edf4;color:#101820;padding:10px 14px;border-radius:10px;display:none;max-width:90%;font-size:13px}
+@media(max-width:380px){.volts{font-size:39px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <div><h1>SMARTBATTERY</h1><div class="sub">MONITOREO DE BATERÍA AUTOMOTRIZ</div></div>
+ <span class="pill" id="connection">Desconectado</span>
+</header>
+
+<section class="card">
+ <div class="kicker">ÚLTIMA MEDICIÓN RECIBIDA</div>
+ <div class="volts" id="voltage">--.-- V</div>
+ <div class="state" id="state" style="color:var(--muted)">Esperando datos de Wokwi</div>
+ <div class="status" id="lastSeen">Sin mediciones recibidas</div>
+</section>
+
+<section class="grid">
+ <div class="metric"><small>Intervalo configurado</small><strong id="intervalText">3 horas</strong></div>
+ <div class="metric"><small>Comunicación</small><strong id="transport">--</strong></div>
+ <div class="metric"><small>Dispositivo</small><strong id="device">--</strong></div>
+ <div class="metric"><small>Próxima lectura estimada</small><strong id="nextRead">--</strong></div>
+</section>
+
+<section class="card">
+ <strong>Indicadores SmartBattery</strong>
+ <div class="leds">
+  <div class="led"><span class="dot" style="background:var(--green)"></span>Verde · Buen estado</div>
+  <div class="led"><span class="dot" style="background:var(--yellow)"></span>Amarillo · Revisar</div>
+  <div class="led"><span class="dot" style="background:var(--red)"></span>Rojo · Crítico</div>
+  <div class="led"><span class="dot" style="background:var(--purple)"></span>Morado · Sobrecarga</div>
+ </div>
+</section>
+
+<section class="card">
+ <strong>Configuración de medición</strong>
+ <label for="interval">Intervalo solicitado</label>
+ <div class="row">
+  <select id="interval" style="flex:2;background:#14212b;color:white;border:1px solid #52616e;border-radius:10px;padding:11px">
+   <option value="1">Cada 1 hora</option><option value="3" selected>Cada 3 horas</option>
+   <option value="6">Cada 6 horas</option><option value="8">Cada 8 horas</option>
+  </select>
+  <button id="sendConfig">Enviar</button>
+ </div>
+ <div class="muted" style="margin-top:8px">La orden se publica para que el ESP32 la reciba en su siguiente conexión. Durante Deep Sleep no puede recibir cambios.</div>
+</section>
+
+<section class="card">
+ <div class="row" style="justify-content:space-between"><strong>Historial reciente</strong><button id="clearHistory" style="padding:8px 10px;font-size:12px">Limpiar</button></div>
+ <div id="history"><div class="muted" style="padding-top:12px">Todavía no hay datos.</div></div>
+</section>
+
+<section class="card">
+ <strong>Conexión con Wokwi</strong>
+ <label for="deviceId">ID de dispositivo / canal</label>
+ <input id="deviceId" value="demo01" autocomplete="off">
+ <div class="row" style="margin-top:10px">
+  <button id="connect">Conectar</button>
+  <button id="disconnect" style="background:#394956;color:white">Desconectar</button>
+ </div>
+ <div class="status" id="brokerStatus">Broker MQTT de demostración: broker.hivemq.com</div>
+</section>
+
+<div class="warning">
+ <strong>Modo demostración:</strong> esta app recibe datos de una simulación Wokwi por un broker MQTT público. No es una conexión privada ni debe usarse para proteger un vehículo real. Para el vehículo se necesita servidor autenticado, cifrado, control de acceso y módulo WiFi/4G real.
+</div>
+</main>
+<div id="toast"></div>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let client=null, telemetryTopic="", configTopic="", historyItems=[];
+let currentInterval=3, lastTimestamp=null, nextTimer=null;
+
+function showToast(msg){const t=$("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>t.style.display="none",2600)}
+function topicRoot(){return "smartbattery/"+$("deviceId").value.trim().replace(/[^a-zA-Z0-9_-]/g,"")}
+function setConnection(ok){$("connection").textContent=ok?"Conectado":"Desconectado";$("connection").style.color=ok?"var(--green)":"var(--muted)"}
+function statusFor(v){
+ if(v>14.8)return ["SOBRECARGA","var(--purple)"];
+ if(v<12.0)return ["CRÍTICO","var(--red)"];
+ if(v<12.4)return ["REVISAR","var(--yellow)"];
+ return ["BUEN ESTADO","var(--green)"];
+}
+function renderHistory(){
+ const el=$("history");
+ if(!historyItems.length){el.innerHTML='<div class="muted" style="padding-top:12px">Todavía no hay datos.</div>';return}
+ el.innerHTML=historyItems.slice(0,15).map(x=>`<div class="history"><span>${x.time}</span><strong>${x.voltage.toFixed(2)} V · ${x.state}</strong></div>`).join("");
+}
+function onTelemetry(payload){
+ let d;try{d=JSON.parse(payload)}catch(e){return}
+ const v=Number(d.voltage);
+ if(!Number.isFinite(v)||v<0||v>30)return;
+ const [state,color]=statusFor(v);
+ $("voltage").textContent=v.toFixed(2)+" V";$("state").textContent=state;$("state").style.color=color;
+ const when=d.timestamp?new Date(d.timestamp):new Date();
+ $("lastSeen").textContent="Medición recibida: "+when.toLocaleString();
+ $("transport").textContent=d.connection||"WiFi";
+ $("device").textContent=d.device||$("deviceId").value;
+ currentInterval=Number(d.interval_hours)||currentInterval;
+ $("intervalText").textContent=currentInterval+" hora"+(currentInterval===1?"":"s");
+ $("interval").value=String(currentInterval);
+ historyItems.unshift({time:when.toLocaleTimeString(),voltage:v,state:state});
+ historyItems=historyItems.slice(0,30);renderHistory();
+ if(nextTimer)clearInterval(nextTimer);
+ let seconds=0;const update=()=>{$("nextRead").textContent=Math.max(0,currentInterval*3600-seconds)+" s";seconds++};
+ update();nextTimer=setInterval(update,1000);
+ if(state==="CRÍTICO"||state==="SOBRECARGA")showToast("Alerta SmartBattery: "+state+" ("+v.toFixed(2)+" V)");
+}
+function connect(){
+ if(typeof mqtt==="undefined"){showToast("No se pudo cargar MQTT. Revisa Internet.");return}
+ if(client)client.end(true);
+ const id=$("deviceId").value.trim();
+ if(!/^[a-zA-Z0-9_-]{1,30}$/.test(id)){showToast("Usa un ID de dispositivo simple.");return}
+ const root=topicRoot();telemetryTopic=root+"/telemetry";configTopic=root+"/config";
+ $("brokerStatus").textContent="Conectando a broker MQTT público…";
+ client=mqtt.connect("wss://broker.hivemq.com:8884/mqtt",{clientId:"sb_android_"+Math.random().toString(16).slice(2),clean:true,connectTimeout:10000,reconnectPeriod:3000});
+ client.on("connect",()=>{setConnection(true);$("brokerStatus").textContent="Suscrita a: "+telemetryTopic;client.subscribe(telemetryTopic);showToast("Conectada al canal Wokwi");});
+ client.on("reconnect",()=>{$("brokerStatus").textContent="Reconectando…";});
+ client.on("close",()=>setConnection(false));
+ client.on("error",e=>{$("brokerStatus").textContent="Error MQTT: "+e.message;setConnection(false);});
+ client.on("message",(topic,message)=>{if(topic===telemetryTopic)onTelemetry(message.toString())});
+}
+$("connect").onclick=connect;
+$("disconnect").onclick=()=>{if(client)client.end(true);client=null;setConnection(false);$("brokerStatus").textContent="Desconectada";};
+$("sendConfig").onclick=()=>{if(!client||!client.connected){showToast("Conecta primero con Wokwi.");return}
+ const hours=Number($("interval").value);client.publish(configTopic,JSON.stringify({interval_hours:hours}),{qos:0},err=>showToast(err?"No se pudo enviar":"Intervalo enviado: "+hours+" h"));};
+$("clearHistory").onclick=()=>{historyItems=[];renderHistory()};
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+</script>
+</body></html>
